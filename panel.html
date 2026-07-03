@@ -11,7 +11,26 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-
+  <!-- Login Overlay for Restricted Access -->
+  <div id="loginOverlay" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 9999;">
+    <div class="card" style="width: 100%; max-width: 400px; text-align: center; border: 1px solid var(--rule); padding: 40px; border-radius: var(--radius); box-shadow: var(--shadow);">
+      <img src="/ivad-logo.png" alt="IVAD" style="height: 55px; margin-bottom: 20px;" />
+      <h2 style="font-family: 'Playfair Display', serif; font-size: 24px; margin-bottom: 10px; color: var(--ink);">Panel de Satisfacción</h2>
+      <p style="color: var(--muted); font-size: 14px; margin-bottom: 24px;">Acceso restringido para personal autorizado.</p>
+      
+      <div id="loginError" style="display: none; background: var(--danger); color: white; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; text-align: center;">
+        Contraseña incorrecta
+      </div>
+      
+      <form id="loginForm">
+        <div style="text-align: left; margin-bottom: 24px;">
+          <label style="display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink); margin-bottom: 8px;" for="adminPass">Contraseña de Administrador</label>
+          <input type="password" id="adminPass" style="width: 100%; padding: 12px; border: 1px solid var(--rule); border-radius: 6px; font-size: 15px; outline: none;" placeholder="Ingrese la contraseña..." required />
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%;">Entrar al Panel</button>
+      </form>
+    </div>
+  </div>
 
   <main style="background: #faf9f5;">
     <div class="panel-container">
@@ -19,9 +38,16 @@
         <div class="panel-header">
           <img src="/ivad-logo.png" alt="IVAD Home & Goods" />
           <div class="right">
-            <div class="live-tag">Panel en vivo</div>
-            <h1>Satisfacción del Cliente</h1>
-            <p class="sub">IVAD Home & Goods · Actualiza en tiempo real</p>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; width: 100%;">
+              <div>
+                <div class="live-tag">Panel en vivo</div>
+                <h1>Satisfacción del Cliente</h1>
+                <p class="sub">IVAD Home & Goods · Actualiza en tiempo real</p>
+              </div>
+              <button id="logoutBtn" class="btn" style="width: auto; font-size: 13px; font-weight: 600; padding: 8px 16px;">
+                Cerrar Sesión
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -460,24 +486,60 @@
       }
     };
 
-    fetchSurveys();
+    // Auth Check using Web Crypto SHA-256
+    async function sha256(message) {
+      const msgBuffer = new TextEncoder().encode(message);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
 
-    if (supabaseClient) {
-      supabaseClient
-        .channel('satisfaccion_changes')
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'satisfaccion',
-          },
-          (payload) => {
-            rows.unshift(payload.new);
-            render();
-          }
-        )
-        .subscribe();
+    const correctHash = '6276637acb97c8618ebee4001af222c29bf2771c6ef36d7b6ccabec9c7f096f0'; // SHA-256 of ivadAdmin2026
+
+    function startDashboard() {
+      fetchSurveys();
+      if (supabaseClient) {
+        supabaseClient
+          .channel('satisfaccion_changes')
+          .on(
+            'postgres_changes',
+            {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'satisfaccion',
+            },
+            (payload) => {
+              rows.unshift(payload.new);
+              render();
+            }
+          )
+          .subscribe();
+      }
+    }
+
+    // Logout
+    $('logoutBtn').addEventListener('click', () => {
+      sessionStorage.removeItem('ivad_satisfaccion_auth');
+      window.location.reload();
+    });
+
+    if (sessionStorage.getItem('ivad_satisfaccion_auth') === 'true') {
+      $('loginOverlay').style.display = 'none';
+      startDashboard();
+    } else {
+      $('loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pass = $('adminPass').value;
+        const hash = await sha256(pass);
+        if (hash === correctHash) {
+          sessionStorage.setItem('ivad_satisfaccion_auth', 'true');
+          $('loginOverlay').style.display = 'none';
+          startDashboard();
+        } else {
+          $('loginError').style.display = 'block';
+          $('adminPass').value = '';
+        }
+      });
     }
   </script>
 </body>
